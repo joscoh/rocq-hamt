@@ -1,14 +1,14 @@
-Require Import Coq.ZArith.BinInt.
-Require Import Coq.ZArith.Znat.
-Require Import Coq.ZArith.BinIntDef.
+Require Import Stdlib.ZArith.BinInt.
+Require Import Stdlib.ZArith.Znat.
+Require Import Stdlib.ZArith.BinIntDef.
 Require Import Lia.
 
-Require Import Coq.Lists.List.
+Require Import Stdlib.Lists.List.
 
-Require Import Coq.Array.PArray.
-Require Import Coq.Numbers.Cyclic.Int63.PrimInt63.
+Require Import Stdlib.Array.PArray.
+Require Import Stdlib.Numbers.Cyclic.Int63.PrimInt63.
 
-Require Import Coq.Logic.Eqdep_dec.
+Require Import Stdlib.Logic.Eqdep_dec.
 
 From Equations Require Import Equations.
 
@@ -315,7 +315,6 @@ Parameter array_ext: forall (n1 n2: int) (P: int -> Type) (a1: arr n1 P) (a2: ar
 *)
 
 (*Array implementation*)
-Section ArrImpl.
 
 (*A sigma type of an index and the type. We do it separately so we can
   assume nested inductive*)
@@ -359,6 +358,41 @@ Proof.
 Qed.
 
 (*The array*)
+(*cannot bypass with record*)
+#[bypass_check(nested_positivity)]
+Inductive arr (n: int) (P: int -> Type) : Type :=
+  | mk_arr: forall (a: array (option (Box P))), isNone (default a) = true ->
+    arr_elts_def n P a = true -> eqb (length a) n = true ->
+    leb n max_length = true -> arr n P.
+
+Arguments mk_arr {_} {_}.
+
+Definition arr_array {n P} (a: arr n P) : array (option (Box P)) :=
+  match a with
+  | mk_arr a _ _ _ _ => a
+  end.
+
+Definition arr_default {n P} (a: arr n P) : isNone (default (arr_array a)) = true :=
+  match a with
+  | mk_arr _ d _ _ _ => d
+  end.
+
+Definition arr_elts {n P} (a: arr n P) : arr_elts_def n P (arr_array a) = true :=
+  match a with
+  | mk_arr _ _ e _ _ => e
+  end.
+
+Definition arr_length {n P} (a: arr n P) : eqb (length (arr_array a)) n = true :=
+  match a with
+  | mk_arr _ _ _ l _ => l
+  end.
+
+Definition arr_max {n P} (a: arr n P) : leb n max_length = true :=
+  match a with
+  | mk_arr _ _ _ _ m => m
+  end.
+(* 
+
 Record arr (n: int) (P: int -> Type) : Type :=
   mk_arr {
     arr_array: array (option (Box P));
@@ -371,7 +405,7 @@ Arguments arr_array {_} {_}.
 Arguments arr_default {_} {_}.
 Arguments arr_elts {_} {_}.
 Arguments arr_length {_} {_}.
-Arguments arr_max {_} {_}.
+Arguments arr_max {_} {_}. *)
 
 Lemma arr_length_eq {n P} (a: arr n P):
   length (arr_array a) = n.
@@ -446,7 +480,7 @@ Qed.
 Definition set_arr (n: int) (P: int -> Type) (a: arr n P) (i: int) (Hi: ltb i n = true) (x: P i) : arr n P.
 Proof.
 set (newarr := (arr_array a).[i <- Some (mk_box P i x)]).
-apply (mk_arr n P newarr).
+apply (mk_arr newarr).
 - apply set_default_obligation; assumption.
 - apply set_elts_obligation; assumption.
 - apply set_length_obligation; assumption.
@@ -590,7 +624,7 @@ Qed.
 Definition make (n: int) (Hn: leb n max_length = true) 
   (P: int -> Type) (init: forall (i: int) (Hi: ltb i n = true), P i):
   arr n P :=
-  mk_arr n P (make_arr n Hn P init)
+  mk_arr (make_arr n Hn P init)
   (make_default_obligation n Hn P init)
   (make_elts_obligation n Hn P init)
   (make_length_obligation n Hn P init) Hn.
@@ -644,7 +678,7 @@ Proof.
 Qed.
 
 Definition copy (n: int) (P: int -> Type) (a: arr n P): arr n P :=
-  mk_arr _ _ (copy_arr n P a) (copy_default_obligation n P a) (copy_elts_obligation n P a)
+  mk_arr (copy_arr n P a) (copy_default_obligation n P a) (copy_elts_obligation n P a)
     (copy_length_obligation n P a) (leb_length n P a).
 
 Lemma get_copy (n: int) (P: int -> Type) (a: arr n P) (i: int) (Hi: ltb i n = true):
@@ -664,4 +698,3 @@ Proof.
   intros Hi1 Hi2; subst. destruct b. f_equal. apply UIP_dec, Uint63.eqs.
 Qed. 
 
-End ArrImpl.
