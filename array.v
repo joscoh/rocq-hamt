@@ -26,6 +26,52 @@ Proof.
   apply UIP_dec. apply Bool.bool_dec.
 Qed.
 
+(*Well-founded proofs*)
+Section Wf.
+(**Annoyingly, stdlib version is Qed for all of these so computation gets stuck*)
+Lemma Acc_incl (A : Set) (R1 R2 : A -> A -> Prop) : Relation_Definitions.inclusion A R1 R2 -> 
+forall z:A, Acc R2 z -> Acc R1 z.
+Proof.
+  induction 2.
+  apply Acc_intro; auto with sets.
+Defined.
+
+Theorem wf_incl (A : Set) (R1 R2 : A -> A -> Prop) : Relation_Definitions.inclusion A R1 R2 -> 
+well_founded R2 -> well_founded R1.
+Proof.
+  unfold well_founded in |- *. intros Hinc Hacc a. apply Acc_incl with (R2:=R2); auto.
+Defined. 
+
+Section Inverse_Image.
+
+  Variables A B : Set.
+  Variable R : B -> B -> Prop.
+  Variable f : A -> B.
+
+  Let Rof (x y:A) : Prop := R (f x) (f y).
+
+  Remark Acc_lemma : forall y:B, Acc R y -> forall x:A, y = f x -> Acc Rof x.
+  Proof.
+    induction 1 as [y _ IHAcc]; intros x H.
+    apply Acc_intro; intros y0 H1.
+    apply (IHAcc (f y0)); try trivial.
+    rewrite H; trivial.
+  Defined.
+
+  Lemma Acc_inverse_image : forall x:A, Acc R (f x) -> Acc Rof x.
+  Proof.
+    intros; apply (Acc_lemma (f x)); trivial.
+  Defined.
+
+  Theorem wf_inverse_image : well_founded R -> well_founded Rof.
+  Proof.
+    red in |- *; intros; apply Acc_inverse_image; auto.
+  Defined.
+
+End Inverse_Image.
+
+End Wf.
+
 (*Part 1: general lemmas about primitive int ops*)
 Section PrimInt.
 
@@ -123,6 +169,30 @@ Qed.
 
 End PrimInt.
 
+(*Well-founded lt on int (directly, rather than via nat)*)
+
+Definition int_lt : int -> int -> Prop := fun x y => ltb x y = true.
+
+Lemma int_lt_iff z1 z2: int_lt z1 z2 <-> int_to_nat z1 < int_to_nat z2.
+Proof.
+  unfold int_lt. rewrite Uint63Axioms.ltb_spec. unfold int_to_nat.
+  rewrite Z2Nat.inj_lt; try lia; apply Uint63.to_Z_bounded.
+Qed.
+
+(*Proof that int_lt is well-founded by using inverse image of [int_to_nat].
+  Could be replaced with something more efficient*)
+Lemma ltb_wf: well_founded int_lt.
+Proof.
+  eapply wf_incl.
+  2: exact (wf_inverse_image _ _ lt int_to_nat Wf_nat.lt_wf).
+  unfold Relation_Definitions.inclusion.
+  intros x y Hlt.
+  apply int_lt_iff. exact Hlt.
+Defined.
+
+Instance ltb_wf': WellFounded int_lt.
+Proof. exact ltb_wf. Defined.
+
 (*Recursive Functions over primitive ints (from n-1 to 0)*)
 (*Dependent version (uses lt info) - tricky when n = 0*)
 Section IntRec.
@@ -131,7 +201,7 @@ Context (P: int -> Type) (n: int) (zero_case: forall (i: int), Uint63.is_zero i 
   (pos_case: forall (i: int), Uint63.is_zero i = false -> ltb i n = true -> P (Uint63.pred i) -> P i).
 
 (*Use Equations to get induction principle*)
-Equations int_rect_aux (z: int) (z_lt: ltb z n = true) : P z by wf (int_to_nat z) lt :=
+Equations int_rect_aux (z: int) (z_lt: ltb z n = true) : P z by wf z int_lt :=
   int_rect_aux z z_lt with inspect (Uint63.is_zero z) => {
     | true eqn:Heq => zero_case z Heq
     | false eqn:Hneq => pos_case z Hneq z_lt 
@@ -139,6 +209,7 @@ Equations int_rect_aux (z: int) (z_lt: ltb z n = true) : P z by wf (int_to_nat z
   }
   .
 Next Obligation.
+apply int_lt_iff.
 apply int_pred_lt; assumption.
 Defined.
 
@@ -311,7 +382,6 @@ Parameter array_ext: forall (n1 n2: int) (P: int -> Type) (a1: arr n1 P) (a2: ar
   (Haeq: forall i (Hi: ltb i n1 = true), get n1 P i a1 = get n2 P i a2),
   a1 = cast (f_equal (fun n => arr n P) Hneq) a2.
 
-(*TODO: should add something about get Some iff in bounds*)
 *)
 
 (*Array implementation*)
